@@ -1,9 +1,8 @@
-from joblib import Parallel, delayed
-from sklearn.utils import gen_even_slices
 import numpy as np
+import pandas as pd
+from itertools import product
 
-
-class TrajectoryData(object):
+class TrajectoryData:
     """Trajectory data wrapper.
 
     Parameters
@@ -20,13 +19,24 @@ class TrajectoryData(object):
     """
 
     def __init__(self, attributes, data, tids, labels=None):
-        self.attributes = attributes
-        self.tids = np.array(tids)
-        self.labels = np.array(labels) if labels is not None else None
-        self.data = np.array(data)
+        attributes = np.array(attributes)
+        tids = np.array(tids)
+        data = [(tid, *point) for tid, point in zip(tids, data)]
+        columns = np.concatenate([['tid'], attributes])
+        self.data = (pd.DataFrame(data, columns=columns)
+                       .groupby('tid')
+                       .apply(lambda g: g.assign(pid=np.arange(len(g))))
+                       .set_index(['tid', 'pid']))
+        
+        self.labels = None if labels is None else pd.Series(labels, index=tids, name='label')
         self._stats = None
-        self.tidToIdx = dict(zip(tids, np.r_[0:len(tids)]))
-        self.labelToIdx = TrajectoryData._get_label_to_idx(labels)
+        
+    @classmethod
+    def from_dataframe(cls, attrs_df: pd.DataFrame, labels: np.array):
+        return cls(attrs_df.columns, 
+                   attrs_df.to_numpy().tolist(),
+                   attrs_df.index.to_numpy(), 
+                   labels)
 
     def get_attributes(self):
         """Retrieves the attributes in the dataset.
@@ -36,7 +46,7 @@ class TrajectoryData(object):
         attributes : array
             An array of length `n_features`.
         """
-        return self.attributes
+        return self.data.columns.to_numpy()
 
     def get_tids(self, label=None):
         """Retrieves the trajectory IDs in the dataset.
@@ -53,10 +63,9 @@ class TrajectoryData(object):
             An array of length `n_trajectories`.
         """
         if not label or self.labels is None:
-            return self.tids
+            return self.data.index.unique(level='tid')
 
-        idxs = self.labelToIdx[label]
-        return self.tids[idxs]
+        return self.labels[self.labels == label].index.to_numpy()
 
     def get_label(self, tid):
         """Retrieves the label for the corresponding tid.
@@ -71,7 +80,7 @@ class TrajectoryData(object):
         label : int or str
             The corresponding label.
         """
-        return self.labels[self.tidToIdx[tid]]
+        return self.labels[tid]
 
     def get_labels(self, unique=False):
         """Retrieves the labels of the trajectories in the dataset.
@@ -89,9 +98,9 @@ class TrajectoryData(object):
             length `n_labels` otherwise.
         """
         if unique and self.labels is not None:
-            return sorted(list(set(self.labels)))
+            return np.sort(self.labels.unique())
 
-        return self.labels
+        return self.labels.to_numpy()
 
     def get_trajectory(self, tid):
         """Retrieves a trajectory from the dataset.
@@ -106,7 +115,7 @@ class TrajectoryData(object):
         trajectory : array, shape: (n_points, n_features)
             The corresponding trajectory.
         """
-        return self.data[self.tidToIdx[tid]]
+        return self.data.loc[tid].to_numpy().tolist()
 
     def get_trajectories(self, label=None):
         """Retrieves multiple trajectories from the dataset.
@@ -125,10 +134,14 @@ class TrajectoryData(object):
             returned.
         """
         if not label or self.labels is None:
-            return self.data
+            return (self.data.groupby(level='tid')
+                             .apply(lambda g: g.to_numpy().tolist())
+                             .to_numpy().tolist())
 
-        idxs = self.labelToIdx[label]
-        return self.data[idxs]
+        tids = self.labels[self.labels == label].index
+        return (self.data.loc[tids].groupby(level='tid')
+                         .apply(lambda g: g.to_numpy().tolist())
+                         .to_numpy())
 
     def length(self):
         """Returns the number of trajectories in the dataset.
@@ -138,7 +151,7 @@ class TrajectoryData(object):
         length : int
             Number of trajectories in the dataset.
         """
-        return len(self.tids)
+        return self.data.index.get_level_values('tid').nunique()
 
     def merge(self, other, ignore_duplicates=True, inplace=True):
         """Merges this trajectory data with another one. Notice that this
@@ -188,7 +201,7 @@ class TrajectoryData(object):
 
         return TrajectoryData(n_attributes, n_data, n_tids, n_labels)
 
-    def to_file(self, file, file_type='csv', n_jobs=1):
+    def to_file(self, file, file_type='csv'):
         """Persists the dataset to a file.
 
         Parameters
@@ -197,11 +210,9 @@ class TrajectoryData(object):
             The output file.
         file_type : str (default='csv')
             The file type. Must be one of `{csv}`.
-        n_jobs : int (default=1)
-            The number of parallel jobs.
         """
         if file_type == 'csv':
-            self._to_csv(file, n_jobs)
+            self._to_csv(file)
 
     def stats(self, print_stats=False):
         """Computes statistics for the dataset.
@@ -273,44 +284,9 @@ class TrajectoryData(object):
         self.labelToIdx = TrajectoryData._get_label_to_idx(labels)
         self._stats = None
 
-    def _to_csv(self, file, n_jobs):
-        lat_lon = -1
-        tids = self.get_tids()
-
-        def build_lines(s):
-            lines = []
-            for i in range(s.start, s.stop):
-                tid = tids[i]
-                label = self.get_label(tid)
-                traj = self.get_trajectory(tid)
-
-                for p in traj:
-                    if lat_lon > -1:
-                        p[lat_lon] = str(p[lat_lon][0]) + \
-                            ',' + str(p[lat_lon][1])
-                    fmt = str(p)[1:-1].replace(', ', ',').replace("'", '')
-                    lines.append(str(tid) + ',' + str(label) + ',' + fmt)
-            return lines
-
-        with open(file, 'w') as out:
-            header = 'tid,label'
-
-            for i, attr in enumerate(self.get_attributes()):
-                if attr == 'lat_lon':
-                    header += ',lat,lon'
-                    lat_lon = i
-                else:
-                    header += ',' + attr
-
-            out.write(header + '\n')
-            func = delayed(build_lines)
-            lines = Parallel(n_jobs=n_jobs, verbose=0)(
-                func(s) for s in gen_even_slices(len(tids), n_jobs))
-
-            lines = np.concatenate(lines)
-            lines = '\n'.join(lines)
-            out.write(lines)
-            out.close()
+    def _to_csv(self, file):
+        df = pd.merge(self.data, self.labels, validate='many_to_one')
+        df.to_csv(file)
 
     def _print_stats(self):
         print('==========================================================')
@@ -346,16 +322,3 @@ class TrajectoryData(object):
             print('==========================================================')
         else:
             print('==========================================================')
-
-    @staticmethod
-    def _get_label_to_idx(labels):
-        labelToIdx = None
-        if labels is not None:
-            labelToIdx = {}
-            for i, label in enumerate(labels):
-                if label in labelToIdx:
-                    labelToIdx[label].append(i)
-                else:
-                    labelToIdx[label] = [i]
-
-        return labelToIdx

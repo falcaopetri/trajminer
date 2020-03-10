@@ -4,7 +4,7 @@ from .tools import get_file_url
 from ..utils.loader import CSVTrajectoryLoader
 
 
-def load_brightkite_checkins(n_jobs=1, cache=True, verbose=False):
+def load_brightkite_checkins(cache=True, verbose=False):
     """Loads the Brightkite location-based social network data.
 
     =================   ==============
@@ -16,8 +16,6 @@ def load_brightkite_checkins(n_jobs=1, cache=True, verbose=False):
 
     Parameters
     ----------
-    n_jobs : int (default=1)
-        The number of parallel jobs.
     cache : bool (default=True)
         If `False`, then always downloads the data. Otherwise, checks if the
         data was previously downloaded.
@@ -38,13 +36,12 @@ def load_brightkite_checkins(n_jobs=1, cache=True, verbose=False):
     csv_file = _get_csv('gowalla', 'checkins.tar.xz', cache, verbose)
 
     log('Loading dataset from', csv_file)
-    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_col='user',
-                                 label_col='user', lat='lat', lon='lon',
-                                 n_jobs=n_jobs)
+    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_cols='user',
+                                 label_col='user', lat='lat', lon='lon')
     return loader.load()
 
 
-def load_gowalla_checkins(n_jobs=1, cache=True, verbose=False):
+def load_gowalla_checkins(cache=True, verbose=False):
     """Loads the Gowalla location-based social network data.
 
     =================   ==============
@@ -56,8 +53,6 @@ def load_gowalla_checkins(n_jobs=1, cache=True, verbose=False):
 
     Parameters
     ----------
-    n_jobs : int (default=1)
-        The number of parallel jobs.
     cache : bool (default=True)
         If `False`, then always downloads the data. Otherwise, checks if the
         data was previously downloaded.
@@ -78,13 +73,12 @@ def load_gowalla_checkins(n_jobs=1, cache=True, verbose=False):
     csv_file = _get_csv('gowalla', 'checkins.tar.xz', cache, verbose)
 
     log('Loading dataset from', csv_file)
-    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_col='user',
-                                 label_col='user', lat='lat', lon='lon',
-                                 n_jobs=n_jobs)
+    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_cols='user',
+                                 label_col='user', lat='lat', lon='lon')
     return loader.load()
 
 
-def load_foursquare_checkins(location, n_jobs=1, cache=True, verbose=False):
+def load_foursquare_checkins(location, cache=True, verbose=False):
     """Loads the Foursquare location-based social network data.
 
     NYC
@@ -108,8 +102,6 @@ def load_foursquare_checkins(location, n_jobs=1, cache=True, verbose=False):
     location : 'nyc', or 'tky'
         If `nyc`, then loads New York City's check-ins data. If `tky`, then
         loads Tokyo's.
-    n_jobs : int (default=1)
-        The number of parallel jobs.
     cache : bool (default=True)
         If `False`, then always downloads the data. Otherwise, checks if the
         data was previously downloaded.
@@ -146,13 +138,12 @@ def load_foursquare_checkins(location, n_jobs=1, cache=True, verbose=False):
             verbose)
 
     log('Loading dataset from', csv_file)
-    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_col='user',
-                                 label_col='user', lat='lat', lon='lon',
-                                 n_jobs=n_jobs)
+    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_cols='user',
+                                 label_col='user', lat='lat', lon='lon')
     return loader.load()
 
 
-def load_starkey_animals(n_jobs=1, cache=True, verbose=False):
+def load_starkey_animals(cache=True, verbose=False):
     """Loads the Starkey Project telemetry data.
 
     =================   ==============
@@ -164,8 +155,6 @@ def load_starkey_animals(n_jobs=1, cache=True, verbose=False):
 
     Parameters
     ----------
-    n_jobs : int (default=1)
-        The number of parallel jobs.
     cache : bool (default=True)
         If `False`, then always downloads the data. Otherwise, checks if the
         data was previously downloaded.
@@ -186,9 +175,8 @@ def load_starkey_animals(n_jobs=1, cache=True, verbose=False):
     csv_file = _get_csv('starkey', 'starkey.tar.xz', cache, verbose)
 
     log('Loading dataset from', csv_file)
-    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_col='tid',
-                                 label_col='species', lat='lat', lon='lon',
-                                 n_jobs=n_jobs)
+    loader = CSVTrajectoryLoader(file=csv_file, sep=',', tid_cols='tid',
+                                 label_col='species', lat='lat', lon='lon')
     return loader.load()
 
 
