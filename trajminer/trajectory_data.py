@@ -1,32 +1,28 @@
-from joblib import Parallel, delayed
-from sklearn.utils import gen_even_slices
 import numpy as np
 
-
-class TrajectoryData(object):
+class TrajectoryData:
     """Trajectory data wrapper.
 
     Parameters
     ----------
-    attributes : array-like
-        The names of attributes/features describing trajectory points in the
-        dataset.
-    data : array-like, shape: (n_trajectories, n_points, n_features)
-        The trajectory data.
-    tids : array-like
-        The corresponding trajectory IDs of trajectories in ``data``.
-    labels : array-like (default=None)
-        The corresponding labels of trajectories in ``data``.
+    data : pandas.DataFrame, shape: (n_trajectories * n_points, n_features)
+        The trajectory data with a 'tid' column.
+    labels : pandas.Series (default=None)
+        The corresponding labels of trajectories in ``data``, indexed by 'tid'.
     """
 
-    def __init__(self, attributes, data, tids, labels=None):
-        self.attributes = attributes
-        self.tids = np.array(tids)
-        self.labels = np.array(labels) if labels is not None else None
-        self.data = np.array(data)
-        self._stats = None
-        self.tidToIdx = dict(zip(tids, np.r_[0:len(tids)]))
-        self.labelToIdx = TrajectoryData._get_label_to_idx(labels)
+    def __init__(self, df, labels=None):
+        if 'tid' not in df.columns:
+            raise ValueError("Trajectory dataframe must have a 'tid' column.")
+
+        df = df.sort_values(by='tid').reset_index(drop=True)
+        labels = labels.sort_index()
+
+        if labels is not None and not np.array_equal(df['tid'].unique(), labels.index):
+            raise ValueError("Trajectory dataframe tids must match with labels's index.")
+
+        self.data = df
+        self.labels = labels
 
     def get_attributes(self):
         """Retrieves the attributes in the dataset.

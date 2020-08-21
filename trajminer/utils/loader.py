@@ -1,5 +1,3 @@
-from joblib import Parallel, delayed
-from sklearn.utils import gen_even_slices
 import pandas as pd
 import numpy as np
 
@@ -37,18 +35,12 @@ class CSVTrajectoryLoader(TrajectoryLoader):
         `None`, labels are not loaded.
     lat : str (default='lat')
         The column in the CSV file corresponding to the latitude of the
-        trajectory points. If both the `lat` and `lon` columns are present in
-        the file, they are included as a single new attribute in the loaded
-        dataset.
+        trajectory points.
     lon : str (default='lon')
         The column in the CSV file corresponding to the longitude of the
-        trajectory points. If both the `lat` and `lon` columns are present in
-        the file, they are included as a single new attribute in the loaded
-        dataset.
+        trajectory points.
     drop_col : array-like (default=None)
         List of columns to drop when reading the data from the file.
-    n_jobs : int (default=1)
-        The number of parallel jobs.
 
     Examples
     --------
@@ -68,72 +60,25 @@ class CSVTrajectoryLoader(TrajectoryLoader):
         self.lat = lat
         self.lon = lon
         self.drop_col = drop_col if drop_col is not None else []
-        self.n_jobs = n_jobs
 
     def load(self):
-        cols = []
-        with open(self.file, 'r') as f:
-            cols = f.readline().replace('\n', '').split(self.sep)
+        df = pd.read_csv(self.file, sep=self.sep, usecols=lambda c: c not in self.drop_col)
+        df = df.rename(columns={self.tid_col: 'tid', self.lat: 'lat', self.lon: 'lon'})
 
-        for col in self.drop_col:
-            if col in cols:
-                cols.remove(col)
+        if self.label_col is None:
+            # no label_col specified
+            return TrajectoryData(df, labels=None)
 
-        df = pd.read_csv(self.file, sep=self.sep, usecols=cols)
-        attributes = list(df.keys())
-        attributes.remove(self.tid_col)
+        real_label_col = self.label_col
+        if self.label_col == self.tid_col:
+            # update label_col since we renamed tid_col to 'tid'
+            real_label_col = 'tid'
 
-        if self.label_col and self.label_col != self.tid_col:
-            attributes.remove(self.label_col)
+        # get real_label_col series indexed by 'tid'
+        labels = df.set_index('tid', drop=False)[real_label_col].drop_duplicates()
 
-        lat_lon = self.lat in attributes and self.lon in attributes
+        if real_label_col != 'tid':
+            # real_label_col is not 'tid', so we can drop the real_label_col from data
+            df = df.drop(columns=real_label_col)
 
-        if lat_lon:
-            attributes.remove(self.lat)
-            attributes.remove(self.lon)
-
-        tids = sorted(df[self.tid_col].unique())
-
-        def load_tids(s):
-            ret = []
-
-            for idx in range(s.start, s.stop):
-                tid = tids[idx]
-                traj = df.loc[df[self.tid_col] == tid, attributes].values
-
-                if lat_lon:
-                    loc = df.loc[df[self.tid_col] == tid,
-                                 [self.lat, self.lon]].values
-                    new_traj = []
-
-                    for i, _ in enumerate(loc):
-                        point = list(traj[i])
-                        point.append(loc[i])
-                        new_traj.append(point)
-
-                    traj = new_traj
-                ret.append(traj)
-            return ret
-
-        labels = None
-        func = delayed(load_tids)
-
-        data = Parallel(n_jobs=self.n_jobs, verbose=0)(
-            func(s) for s in gen_even_slices(len(tids), self.n_jobs))
-        data = np.concatenate(data)
-
-        if self.label_col:
-            labels = df \
-                .drop_duplicates(subset=[self.tid_col, self.label_col],
-                                 inplace=False) \
-                .sort_values(self.tid_col,
-                             ascending=True,
-                             inplace=False)[self.label_col].values
-
-        if lat_lon:
-            attributes.append('lat_lon')
-
-        return TrajectoryData(attributes=attributes,
-                              data=data,
-                              tids=tids,
-                              labels=labels)
+        return TrajectoryData(df, labels)
